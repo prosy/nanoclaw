@@ -1,3 +1,5 @@
+> **This is the [Aug Worlds](https://github.com/prosy) fork of NanoClaw for the [Travel.aw](https://github.com/prosy/travel.aw) ecosystem.** Upstream: [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw). See [prosy/travel.aw](https://github.com/prosy/travel.aw) for context.
+
 <p align="center">
   <img src="assets/nanoclaw-logo.png" alt="NanoClaw" width="400">
 </p>
