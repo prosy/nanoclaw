@@ -169,6 +169,8 @@ function buildVolumeMounts(
   fs.mkdirSync(path.join(groupIpcDir, 'messages'), { recursive: true });
   fs.mkdirSync(path.join(groupIpcDir, 'tasks'), { recursive: true });
   fs.mkdirSync(path.join(groupIpcDir, 'input'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'skill-requests'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'skill-results'), { recursive: true });
   mounts.push({
     hostPath: groupIpcDir,
     containerPath: '/workspace/ipc',

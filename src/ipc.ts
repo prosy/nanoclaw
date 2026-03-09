@@ -8,6 +8,7 @@ import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
+import { processSkillRequests } from './skill-ipc.js';
 import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
@@ -144,6 +145,9 @@ export function startIpcWatcher(deps: IpcDeps): void {
       } catch (err) {
         logger.error({ err, sourceGroup }, 'Error reading IPC tasks directory');
       }
+
+      // Process skill requests from this group's IPC directory (DD-33, REQ-6.3)
+      await processSkillRequests(ipcBaseDir, sourceGroup);
     }
 
     setTimeout(processIpcFiles, IPC_POLL_INTERVAL);

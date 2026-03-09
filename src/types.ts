@@ -105,3 +105,76 @@ export type OnChatMetadata = (
   channel?: string,
   isGroup?: boolean,
 ) => void;
+
+// --- Skill IPC types (DD-33, REQ-6.3) ---
+
+/**
+ * Skill invocation request written by the agent container to
+ * /workspace/ipc/skill-requests/{requestId}.json
+ */
+export interface SkillRequest {
+  /** Unique ID, format: sr-{unix_timestamp}-{random_hex} */
+  requestId: string;
+  /** Skill name matching a directory in SKILLS_DIR */
+  skillName: string;
+  /** SkillInput-compatible payload */
+  input: {
+    skillDir: string;
+    data: Record<string, unknown>;
+  };
+  /** ISO 8601 timestamp */
+  timestamp: string;
+}
+
+/** Error codes for skill IPC results */
+export type SkillErrorCode =
+  | 'SKILL_NOT_FOUND'
+  | 'SKILL_TIMEOUT'
+  | 'SKILL_EXECUTION_ERROR'
+  | 'CHAIN_LIMIT_EXCEEDED'
+  | 'CONCURRENT_LIMIT'
+  | 'INVALID_INPUT';
+
+/**
+ * Skill execution result written by the host watcher to
+ * /workspace/ipc/skill-results/{requestId}.json
+ */
+export interface SkillResult {
+  /** Matches the requestId from the request */
+  requestId: string;
+  /** Whether the skill executed successfully */
+  status: 'success' | 'error';
+  /** SkillOutput when status is "success" */
+  output?: {
+    success: boolean;
+    data: Record<string, unknown>;
+    metadata: {
+      skillName: string;
+      skillVersion: string;
+      containerId: string;
+      durationMs: number;
+      exitCode: number;
+    };
+  };
+  /** Error details when status is "error" */
+  error?: {
+    code: SkillErrorCode;
+    message: string;
+  };
+  /** Total wall-clock time in milliseconds */
+  durationMs: number;
+  /** ISO 8601 timestamp */
+  timestamp: string;
+}
+
+/**
+ * Per-group skill invocation counters for A21 enforcement.
+ * Turn counters reset when the container exits or a new turn begins.
+ * Session counters persist across turns within a session.
+ */
+export interface SkillCounters {
+  /** Skills invoked in the current turn (CHAIN-01: max 5) */
+  turnCount: number;
+  /** Skills invoked in the current session (CHAIN-02: max 15) */
+  sessionCount: number;
+}

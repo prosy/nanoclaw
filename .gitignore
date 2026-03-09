@@ -13,10 +13,19 @@ logs/
 groups/*
 !groups/main/
 !groups/global/
+!groups/trip-planning/
+!groups/expense-tracking/
+!groups/booking-mgmt/
 groups/main/*
 groups/global/*
+groups/trip-planning/*
+groups/expense-tracking/*
+groups/booking-mgmt/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
+!groups/trip-planning/CLAUDE.md
+!groups/expense-tracking/CLAUDE.md
+!groups/booking-mgmt/CLAUDE.md
 
 # Secrets
 *.keys.json
