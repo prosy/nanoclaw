@@ -12,6 +12,7 @@ const envConfig = readEnvFile([
   'SKILLS_DIR',
   'REDIS_URL',
   'SESSION_TTL_SECONDS',
+  'NANOCLAW_HEADLESS',
 ]);
 
 export const ASSISTANT_NAME =
@@ -120,3 +121,8 @@ function parseSessionTtl(): number {
 }
 
 export const SESSION_TTL_SECONDS = parseSessionTtl();
+
+// Headless mode: allow NanoClaw to start without messaging channels (web-only agent testing).
+// When true, skips the fatal exit on zero channels — IPC watcher + scheduler still run.
+export const HEADLESS =
+  (process.env.NANOCLAW_HEADLESS || envConfig.NANOCLAW_HEADLESS) === 'true';

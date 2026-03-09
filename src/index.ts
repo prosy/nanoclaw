@@ -4,6 +4,7 @@ import path from 'path';
 import {
   ASSISTANT_NAME,
   CREDENTIAL_PROXY_PORT,
+  HEADLESS,
   IDLE_TIMEOUT,
   POLL_INTERVAL,
   SKILLS_DIR,
@@ -649,9 +650,14 @@ async function main(): Promise<void> {
     channels.push(channel);
     await channel.connect();
   }
-  if (channels.length === 0) {
+  if (channels.length === 0 && !HEADLESS) {
     logger.fatal('No channels connected');
     process.exit(1);
+  }
+  if (channels.length === 0) {
+    logger.info(
+      'No messaging channels connected — running in headless mode (IPC + scheduler only)',
+    );
   }
 
   // Start subsystems (independently of connection handler)
