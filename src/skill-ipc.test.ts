@@ -246,7 +246,12 @@ describe('skill-ipc', () => {
 
   describe('buildErrorResult', () => {
     it('builds an error result with correct structure', () => {
-      const result = buildErrorResult('sr-123-abc', 'SKILL_TIMEOUT', 'Timed out', 5000);
+      const result = buildErrorResult(
+        'sr-123-abc',
+        'SKILL_TIMEOUT',
+        'Timed out',
+        5000,
+      );
       expect(result.requestId).toBe('sr-123-abc');
       expect(result.status).toBe('error');
       expect(result.error!.code).toBe('SKILL_TIMEOUT');
@@ -297,15 +302,20 @@ describe('skill-ipc', () => {
       await processSkillRequest(filePath, 'test-group', resultsDir, errorsDir);
 
       expect(fs.existsSync(filePath)).toBe(false);
-      expect(fs.existsSync(path.join(errorsDir, 'test-group-bad-request.json'))).toBe(true);
+      expect(
+        fs.existsSync(path.join(errorsDir, 'test-group-bad-request.json')),
+      ).toBe(true);
     });
 
     it('writes INVALID_INPUT error for missing fields', async () => {
       const filePath = path.join(requestsDir, 'sr-123-abc.json');
-      fs.writeFileSync(filePath, JSON.stringify({
-        requestId: 'sr-123-abc',
-        // missing skillName, input, timestamp
-      }));
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          requestId: 'sr-123-abc',
+          // missing skillName, input, timestamp
+        }),
+      );
 
       await processSkillRequest(filePath, 'test-group', resultsDir, errorsDir);
 
@@ -323,12 +333,15 @@ describe('skill-ipc', () => {
       counters.sessionCount = 5;
 
       const filePath = path.join(requestsDir, 'sr-123-abc.json');
-      fs.writeFileSync(filePath, JSON.stringify({
-        requestId: 'sr-123-abc',
-        skillName: 'flight-search',
-        input: { skillDir: '/skills/flight-search', data: {} },
-        timestamp: '2026-03-08T12:00:00Z',
-      }));
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          requestId: 'sr-123-abc',
+          skillName: 'flight-search',
+          input: { skillDir: '/skills/flight-search', data: {} },
+          timestamp: '2026-03-08T12:00:00Z',
+        }),
+      );
 
       await processSkillRequest(filePath, 'test-group', resultsDir, errorsDir);
 
@@ -341,12 +354,15 @@ describe('skill-ipc', () => {
 
     it('writes SKILL_NOT_FOUND for unknown skills', async () => {
       const filePath = path.join(requestsDir, 'sr-123-abc.json');
-      fs.writeFileSync(filePath, JSON.stringify({
-        requestId: 'sr-123-abc',
-        skillName: 'nonexistent-skill',
-        input: { skillDir: '/skills/nonexistent', data: {} },
-        timestamp: '2026-03-08T12:00:00Z',
-      }));
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          requestId: 'sr-123-abc',
+          skillName: 'nonexistent-skill',
+          input: { skillDir: '/skills/nonexistent', data: {} },
+          timestamp: '2026-03-08T12:00:00Z',
+        }),
+      );
 
       await processSkillRequest(filePath, 'test-group', resultsDir, errorsDir);
 
@@ -376,12 +392,15 @@ describe('skill-ipc', () => {
       setSkillExecutor(async () => mockOutput);
 
       const filePath = path.join(requestsDir, 'sr-123-abc.json');
-      fs.writeFileSync(filePath, JSON.stringify({
-        requestId: 'sr-123-abc',
-        skillName: 'flight-search',
-        input: { skillDir: '/skills/flight-search', data: { origin: 'LAX' } },
-        timestamp: '2026-03-08T12:00:00Z',
-      }));
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          requestId: 'sr-123-abc',
+          skillName: 'flight-search',
+          input: { skillDir: '/skills/flight-search', data: { origin: 'LAX' } },
+          timestamp: '2026-03-08T12:00:00Z',
+        }),
+      );
 
       await processSkillRequest(filePath, 'test-group', resultsDir, errorsDir);
 
@@ -413,12 +432,15 @@ describe('skill-ipc', () => {
       });
 
       const filePath = path.join(requestsDir, 'sr-123-abc.json');
-      fs.writeFileSync(filePath, JSON.stringify({
-        requestId: 'sr-123-abc',
-        skillName: 'flight-search',
-        input: { skillDir: '/skills/flight-search', data: {} },
-        timestamp: '2026-03-08T12:00:00Z',
-      }));
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          requestId: 'sr-123-abc',
+          skillName: 'flight-search',
+          input: { skillDir: '/skills/flight-search', data: {} },
+          timestamp: '2026-03-08T12:00:00Z',
+        }),
+      );
 
       await processSkillRequest(filePath, 'test-group', resultsDir, errorsDir);
 
@@ -439,12 +461,15 @@ describe('skill-ipc', () => {
       });
 
       const filePath = path.join(requestsDir, 'sr-123-abc.json');
-      fs.writeFileSync(filePath, JSON.stringify({
-        requestId: 'sr-123-abc',
-        skillName: 'flight-search',
-        input: { skillDir: '/skills/flight-search', data: {} },
-        timestamp: '2026-03-08T12:00:00Z',
-      }));
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          requestId: 'sr-123-abc',
+          skillName: 'flight-search',
+          input: { skillDir: '/skills/flight-search', data: {} },
+          timestamp: '2026-03-08T12:00:00Z',
+        }),
+      );
 
       await processSkillRequest(filePath, 'test-group', resultsDir, errorsDir);
 
@@ -468,12 +493,15 @@ describe('skill-ipc', () => {
       const before = _getConcurrentExecutions();
 
       const filePath = path.join(requestsDir, 'sr-123-abc.json');
-      fs.writeFileSync(filePath, JSON.stringify({
-        requestId: 'sr-123-abc',
-        skillName: 'flight-search',
-        input: { skillDir: '/skills/flight-search', data: {} },
-        timestamp: '2026-03-08T12:00:00Z',
-      }));
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          requestId: 'sr-123-abc',
+          skillName: 'flight-search',
+          input: { skillDir: '/skills/flight-search', data: {} },
+          timestamp: '2026-03-08T12:00:00Z',
+        }),
+      );
 
       await processSkillRequest(filePath, 'test-group', resultsDir, errorsDir);
 
@@ -538,8 +566,12 @@ describe('skill-ipc', () => {
       await processSkillRequests(tmpDir, 'test-group');
 
       // Both results should exist
-      expect(fs.existsSync(path.join(resultsDir, 'sr-001-aaa.json'))).toBe(true);
-      expect(fs.existsSync(path.join(resultsDir, 'sr-002-bbb.json'))).toBe(true);
+      expect(fs.existsSync(path.join(resultsDir, 'sr-001-aaa.json'))).toBe(
+        true,
+      );
+      expect(fs.existsSync(path.join(resultsDir, 'sr-002-bbb.json'))).toBe(
+        true,
+      );
 
       // Request files should be deleted
       expect(fs.readdirSync(requestsDir)).toHaveLength(0);

@@ -80,8 +80,7 @@ export const TIMEZONE =
 
 // Path to the travel-aw-skills checkout (required for skill IPC).
 // When unset, skill requests return SKILL_NOT_FOUND errors.
-export const SKILLS_DIR =
-  process.env.SKILLS_DIR || envConfig.SKILLS_DIR || '';
+export const SKILLS_DIR = process.env.SKILLS_DIR || envConfig.SKILLS_DIR || '';
 
 // --- Memory / Redis config (REQ-6.8.1, REQ-6.8.2) ---
 
@@ -98,16 +97,22 @@ function parseSessionTtl(): number {
 
   const parsed = parseInt(raw, 10);
   if (isNaN(parsed)) {
-    console.warn('[MEMORY-WARN] SESSION_TTL_SECONDS is not a number, using default 7200');
+    console.warn(
+      '[MEMORY-WARN] SESSION_TTL_SECONDS is not a number, using default 7200',
+    );
     return 7200;
   }
 
   if (parsed < 3600) {
-    console.warn(`[MEMORY-WARN] SESSION_TTL_SECONDS=${parsed} below minimum, clamping to 3600`);
+    console.warn(
+      `[MEMORY-WARN] SESSION_TTL_SECONDS=${parsed} below minimum, clamping to 3600`,
+    );
     return 3600;
   }
   if (parsed > 10800) {
-    console.warn(`[MEMORY-WARN] SESSION_TTL_SECONDS=${parsed} above maximum, clamping to 10800`);
+    console.warn(
+      `[MEMORY-WARN] SESSION_TTL_SECONDS=${parsed} above maximum, clamping to 10800`,
+    );
     return 10800;
   }
 

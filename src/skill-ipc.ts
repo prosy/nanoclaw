@@ -16,7 +16,12 @@ import path from 'path';
 
 import { SKILLS_DIR } from './config.js';
 import { logger } from './logger.js';
-import type { SkillCounters, SkillErrorCode, SkillRequest, SkillResult } from './types.js';
+import type {
+  SkillCounters,
+  SkillErrorCode,
+  SkillRequest,
+  SkillResult,
+} from './types.js';
 
 // A21 limits
 const CHAIN_01_MAX_PER_TURN = 5;
@@ -73,7 +78,9 @@ export function resetAllCounters(): void {
 /**
  * Validate a skill request has all required fields.
  */
-export function validateRequest(data: unknown): { valid: true; request: SkillRequest } | { valid: false; error: string } {
+export function validateRequest(
+  data: unknown,
+): { valid: true; request: SkillRequest } | { valid: false; error: string } {
   if (!data || typeof data !== 'object') {
     return { valid: false, error: 'Request is not a valid JSON object' };
   }
@@ -162,7 +169,11 @@ export function resolveSkillDir(skillName: string): string | null {
   }
 
   // Prevent path traversal
-  if (skillName.includes('/') || skillName.includes('\\') || skillName.includes('..')) {
+  if (
+    skillName.includes('/') ||
+    skillName.includes('\\') ||
+    skillName.includes('..')
+  ) {
     return null;
   }
 
@@ -251,7 +262,9 @@ function getSkillExecutor(): SkillExecutor | null {
 
   // SkillRunner is not bundled with NanoClaw -- it comes from the travel_web
   // monorepo. When unavailable, all skill requests get SKILL_NOT_FOUND errors.
-  logger.warn('[SKILL-IPC] SkillRunner not available — set a skill executor via setSkillExecutor()');
+  logger.warn(
+    '[SKILL-IPC] SkillRunner not available — set a skill executor via setSkillExecutor()',
+  );
   skillRunnerAvailable = false;
   return null;
 }
@@ -275,20 +288,34 @@ export async function processSkillRequest(
     try {
       parsed = JSON.parse(raw);
     } catch {
-      logger.error({ file: fileName, groupFolder }, 'Malformed JSON in skill request');
+      logger.error(
+        { file: fileName, groupFolder },
+        'Malformed JSON in skill request',
+      );
       fs.mkdirSync(errorsDir, { recursive: true });
-      fs.renameSync(filePath, path.join(errorsDir, `${groupFolder}-${fileName}`));
+      fs.renameSync(
+        filePath,
+        path.join(errorsDir, `${groupFolder}-${fileName}`),
+      );
       return;
     }
 
     const validation = validateRequest(parsed);
     if (!validation.valid) {
-      logger.warn({ file: fileName, groupFolder, error: validation.error }, 'Invalid skill request');
+      logger.warn(
+        { file: fileName, groupFolder, error: validation.error },
+        'Invalid skill request',
+      );
       // Try to extract requestId for the error result
       if (parsed && typeof parsed === 'object' && 'requestId' in parsed) {
         requestId = String((parsed as Record<string, unknown>).requestId);
       }
-      const result = buildErrorResult(requestId, 'INVALID_INPUT', validation.error, Date.now() - startTime);
+      const result = buildErrorResult(
+        requestId,
+        'INVALID_INPUT',
+        validation.error,
+        Date.now() - startTime,
+      );
       fs.writeFileSync(
         path.join(resultsDir, `${requestId}.json`),
         JSON.stringify(result, null, 2),
@@ -303,8 +330,16 @@ export async function processSkillRequest(
     // Check A21 chain limits
     const limitError = checkChainLimits(groupFolder);
     if (limitError) {
-      logger.warn({ requestId, groupFolder, code: limitError.code }, 'Skill request rejected by A21 limits');
-      const result = buildErrorResult(requestId, limitError.code, limitError.message, Date.now() - startTime);
+      logger.warn(
+        { requestId, groupFolder, code: limitError.code },
+        'Skill request rejected by A21 limits',
+      );
+      const result = buildErrorResult(
+        requestId,
+        limitError.code,
+        limitError.message,
+        Date.now() - startTime,
+      );
       fs.writeFileSync(
         path.join(resultsDir, `${requestId}.json`),
         JSON.stringify(result, null, 2),
@@ -316,7 +351,10 @@ export async function processSkillRequest(
     // Resolve skill directory
     const skillDir = resolveSkillDir(request.skillName);
     if (!skillDir) {
-      logger.warn({ requestId, skillName: request.skillName, groupFolder }, 'Skill not found');
+      logger.warn(
+        { requestId, skillName: request.skillName, groupFolder },
+        'Skill not found',
+      );
       const result = buildErrorResult(
         requestId,
         'SKILL_NOT_FOUND',
@@ -360,32 +398,53 @@ export async function processSkillRequest(
         { timeoutSeconds: TIME_01_TIMEOUT_SECONDS },
       );
 
-      const result = buildSuccessResult(requestId, output, Date.now() - startTime);
+      const result = buildSuccessResult(
+        requestId,
+        output,
+        Date.now() - startTime,
+      );
       fs.writeFileSync(
         path.join(resultsDir, `${requestId}.json`),
         JSON.stringify(result, null, 2),
       );
 
       logger.info(
-        { requestId, skillName: request.skillName, groupFolder, durationMs: result.durationMs },
+        {
+          requestId,
+          skillName: request.skillName,
+          groupFolder,
+          durationMs: result.durationMs,
+        },
         'Skill executed successfully',
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const isTimeout = message.toLowerCase().includes('timeout');
-      const code: SkillErrorCode = isTimeout ? 'SKILL_TIMEOUT' : 'SKILL_EXECUTION_ERROR';
+      const code: SkillErrorCode = isTimeout
+        ? 'SKILL_TIMEOUT'
+        : 'SKILL_EXECUTION_ERROR';
       const errorMessage = isTimeout
         ? `Skill execution exceeded ${TIME_01_TIMEOUT_SECONDS}s limit (TIME-01)`
         : `Skill execution failed: ${message}`;
 
-      const result = buildErrorResult(requestId, code, errorMessage, Date.now() - startTime);
+      const result = buildErrorResult(
+        requestId,
+        code,
+        errorMessage,
+        Date.now() - startTime,
+      );
       fs.writeFileSync(
         path.join(resultsDir, `${requestId}.json`),
         JSON.stringify(result, null, 2),
       );
 
       logger.error(
-        { requestId, skillName: request.skillName, groupFolder, error: message },
+        {
+          requestId,
+          skillName: request.skillName,
+          groupFolder,
+          error: message,
+        },
         'Skill execution failed',
       );
     } finally {
@@ -395,14 +454,23 @@ export async function processSkillRequest(
     // Delete the processed request file
     fs.unlinkSync(filePath);
   } catch (err) {
-    logger.error({ file: fileName, groupFolder, err }, 'Error processing skill request');
+    logger.error(
+      { file: fileName, groupFolder, err },
+      'Error processing skill request',
+    );
     try {
       fs.mkdirSync(errorsDir, { recursive: true });
       if (fs.existsSync(filePath)) {
-        fs.renameSync(filePath, path.join(errorsDir, `${groupFolder}-${fileName}`));
+        fs.renameSync(
+          filePath,
+          path.join(errorsDir, `${groupFolder}-${fileName}`),
+        );
       }
     } catch (moveErr) {
-      logger.error({ file: fileName, moveErr }, 'Failed to move skill request to errors');
+      logger.error(
+        { file: fileName, moveErr },
+        'Failed to move skill request to errors',
+      );
     }
   }
 }
@@ -422,7 +490,9 @@ export async function processSkillRequests(
   try {
     if (!fs.existsSync(requestsDir)) return;
 
-    const files = fs.readdirSync(requestsDir).filter((f) => f.endsWith('.json'));
+    const files = fs
+      .readdirSync(requestsDir)
+      .filter((f) => f.endsWith('.json'));
     if (files.length === 0) return;
 
     // Ensure results directory exists
@@ -438,7 +508,10 @@ export async function processSkillRequests(
       );
     }
   } catch (err) {
-    logger.error({ err, groupFolder }, 'Error reading skill-requests directory');
+    logger.error(
+      { err, groupFolder },
+      'Error reading skill-requests directory',
+    );
   }
 }
 

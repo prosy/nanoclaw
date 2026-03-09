@@ -10,7 +10,11 @@ import path from 'path';
 
 import { resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
-import { isRedisAvailable, readSession, SessionPayload } from './memory-client.js';
+import {
+  isRedisAvailable,
+  readSession,
+  SessionPayload,
+} from './memory-client.js';
 
 // Sections that must never be modified by augmentation (REQ-6.8.5)
 const PROTECTED_SECTIONS = [
@@ -22,8 +26,10 @@ const PROTECTED_SECTIONS = [
 ];
 
 const SESSION_SECTION_HEADER = '## Session Context';
-const FRESH_SESSION_CONTENT = 'No active session. This is a fresh conversation.';
-const FALLBACK_SESSION_CONTENT = 'No active session (Redis unavailable). Using flat-file session.';
+const FRESH_SESSION_CONTENT =
+  'No active session. This is a fresh conversation.';
+const FALLBACK_SESSION_CONTENT =
+  'No active session (Redis unavailable). Using flat-file session.';
 
 /**
  * Build the session context markdown block from a SessionPayload.
@@ -138,10 +144,14 @@ export async function assembleContext(
   if (redisUp) {
     session = await readSession(groupFolder);
     if (!session) {
-      logger.debug(`[MEMORY] No active session for group ${groupFolder}, starting fresh`);
+      logger.debug(
+        `[MEMORY] No active session for group ${groupFolder}, starting fresh`,
+      );
     }
   } else {
-    logger.info(`[MEMORY] Redis unavailable, falling back to CLAUDE.md session for group ${groupFolder}`);
+    logger.info(
+      `[MEMORY] Redis unavailable, falling back to CLAUDE.md session for group ${groupFolder}`,
+    );
   }
 
   // Read CLAUDE.md template (REQ-6.8.5)
@@ -149,7 +159,9 @@ export async function assembleContext(
   try {
     templateContent = fs.readFileSync(claudeMdPath, 'utf-8');
   } catch {
-    logger.warn(`[MEMORY-WARN] CLAUDE.md missing for group ${groupFolder}, created from template`);
+    logger.warn(
+      `[MEMORY-WARN] CLAUDE.md missing for group ${groupFolder}, created from template`,
+    );
     // Minimal fallback template
     templateContent = `# ${groupFolder}\n\n## Identity\n\nAgent for ${groupFolder}.\n`;
     fs.mkdirSync(groupDir, { recursive: true });
@@ -162,7 +174,9 @@ export async function assembleContext(
     fs.writeFileSync(claudeMdPath, augmented);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error(`[MEMORY-ERROR] Cannot write CLAUDE.md for group ${groupFolder}: ${message}`);
+    logger.error(
+      `[MEMORY-ERROR] Cannot write CLAUDE.md for group ${groupFolder}: ${message}`,
+    );
     // Proceed with existing CLAUDE.md -- agent runs without session context
   }
 

@@ -7,7 +7,8 @@ function makePayload(overrides: Partial<SessionPayload> = {}): SessionPayload {
   return {
     sessionId: 'sess_abc123',
     groupFolder: 'trip-planning',
-    conversationHistory: 'User: Find flights to Tokyo\nAssistant: Found 3 options.',
+    conversationHistory:
+      'User: Find flights to Tokyo\nAssistant: Found 3 options.',
     skillInvocations: [
       {
         requestId: 'sr-123',
@@ -65,7 +66,9 @@ describe('augmentClaudeMd', () => {
 
   it('preserves Identity section unchanged', () => {
     const result = augmentClaudeMd(TEMPLATE, makePayload(), true);
-    expect(result).toContain('## Identity\n\nYou are TravelAW, a travel planning assistant.');
+    expect(result).toContain(
+      '## Identity\n\nYou are TravelAW, a travel planning assistant.',
+    );
   });
 
   it('preserves Rules section unchanged', () => {
@@ -75,7 +78,9 @@ describe('augmentClaudeMd', () => {
 
   it('preserves Available Skills section unchanged', () => {
     const result = augmentClaudeMd(TEMPLATE, makePayload(), true);
-    expect(result).toContain('## Available Skills\n\nSkills are invoked via IPC.');
+    expect(result).toContain(
+      '## Available Skills\n\nSkills are invoked via IPC.',
+    );
   });
 
   it('preserves Trip Context section unchanged', () => {
@@ -89,7 +94,8 @@ describe('augmentClaudeMd', () => {
   });
 
   it('replaces existing Session Context section', () => {
-    const withExisting = TEMPLATE + '\n\n## Session Context\n\nOld session data here.';
+    const withExisting =
+      TEMPLATE + '\n\n## Session Context\n\nOld session data here.';
     const result = augmentClaudeMd(withExisting, makePayload(), true);
 
     // Should have new content
@@ -105,14 +111,18 @@ describe('augmentClaudeMd', () => {
     const result = augmentClaudeMd(TEMPLATE, null, true);
 
     expect(result).toContain('## Session Context');
-    expect(result).toContain('No active session. This is a fresh conversation.');
+    expect(result).toContain(
+      'No active session. This is a fresh conversation.',
+    );
   });
 
   it('writes fallback marker when Redis is unavailable', () => {
     const result = augmentClaudeMd(TEMPLATE, null, false);
 
     expect(result).toContain('## Session Context');
-    expect(result).toContain('No active session (Redis unavailable). Using flat-file session.');
+    expect(result).toContain(
+      'No active session (Redis unavailable). Using flat-file session.',
+    );
   });
 
   it('handles payload with no skill invocations', () => {
@@ -142,7 +152,8 @@ describe('augmentClaudeMd', () => {
 
 describe('stripSessionContext', () => {
   it('removes Session Context section from content', () => {
-    const withSession = TEMPLATE + '\n\n## Session Context\n\nSome session data.\nMore data.';
+    const withSession =
+      TEMPLATE + '\n\n## Session Context\n\nSome session data.\nMore data.';
     const result = stripSessionContext(withSession);
 
     expect(result).not.toContain('## Session Context');

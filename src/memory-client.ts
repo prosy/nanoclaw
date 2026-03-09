@@ -91,7 +91,10 @@ export function initRedis(): void {
 
     redis.on('error', (err: Error) => {
       if (redisAvailable) {
-        logger.warn({ err }, '[MEMORY-WARN] Redis connection lost, reconnecting');
+        logger.warn(
+          { err },
+          '[MEMORY-WARN] Redis connection lost, reconnecting',
+        );
       }
       redisAvailable = false;
     });
@@ -102,7 +105,9 @@ export function initRedis(): void {
 
     redis.on('ready', () => {
       if (!redisAvailable) {
-        logger.info('[MEMORY] Redis reconnected, resuming Redis-backed sessions');
+        logger.info(
+          '[MEMORY] Redis reconnected, resuming Redis-backed sessions',
+        );
       }
       redisAvailable = true;
     });
@@ -157,14 +162,18 @@ export async function readSession(
       const raw = await redis.get(keys[0]);
       const elapsed = Date.now() - startMs;
       if (elapsed > 50) {
-        logger.warn(`[MEMORY-WARN] Session read latency ${elapsed}ms for group ${groupFolder}`);
+        logger.warn(
+          `[MEMORY-WARN] Session read latency ${elapsed}ms for group ${groupFolder}`,
+        );
       }
       if (!raw) return null;
       try {
         return JSON.parse(raw) as SessionPayload;
       } catch {
         // Corrupt payload (REQ-6.8.3 failure mode)
-        logger.error(`[MEMORY-ERROR] Corrupt session payload for group ${groupFolder}, starting fresh`);
+        logger.error(
+          `[MEMORY-ERROR] Corrupt session payload for group ${groupFolder}, starting fresh`,
+        );
         await redis.del(keys[0]);
         return null;
       }
@@ -192,18 +201,24 @@ export async function readSession(
     const staleKeys = payloads.slice(1).map((p) => p.key);
     if (staleKeys.length > 0) {
       await redis.del(...staleKeys);
-      logger.info(`[MEMORY] Cleaned ${staleKeys.length} stale session keys for group ${groupFolder}`);
+      logger.info(
+        `[MEMORY] Cleaned ${staleKeys.length} stale session keys for group ${groupFolder}`,
+      );
     }
 
     const elapsed = Date.now() - startMs;
     if (elapsed > 50) {
-      logger.warn(`[MEMORY-WARN] Session read latency ${elapsed}ms for group ${groupFolder}`);
+      logger.warn(
+        `[MEMORY-WARN] Session read latency ${elapsed}ms for group ${groupFolder}`,
+      );
     }
 
     return best.payload;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`[MEMORY-WARN] Session read failed for group ${groupFolder}: ${message}`);
+    logger.warn(
+      `[MEMORY-WARN] Session read failed for group ${groupFolder}: ${message}`,
+    );
     return null;
   }
 }
@@ -242,7 +257,9 @@ export async function writeSession(
         payload.conversationHistory,
         10,
       );
-      logger.warn(`[MEMORY-WARN] Session payload truncated for ${sessionId}, keeping last 10 turns`);
+      logger.warn(
+        `[MEMORY-WARN] Session payload truncated for ${sessionId}, keeping last 10 turns`,
+      );
     }
 
     const key = sessionKey(groupFolder, sessionId);
@@ -250,7 +267,9 @@ export async function writeSession(
     await redis.set(key, data, 'EX', SESSION_TTL_SECONDS);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`[MEMORY-WARN] Session write failed for ${sessionId}: ${message}`);
+    logger.warn(
+      `[MEMORY-WARN] Session write failed for ${sessionId}: ${message}`,
+    );
   }
 }
 
@@ -259,21 +278,27 @@ export async function writeSession(
  */
 export async function clearSession(groupFolder: string): Promise<void> {
   if (!isRedisAvailable() || !redis) {
-    logger.warn(`[MEMORY-WARN] Session clear requested for group ${groupFolder} but Redis unavailable`);
+    logger.warn(
+      `[MEMORY-WARN] Session clear requested for group ${groupFolder} but Redis unavailable`,
+    );
     return;
   }
 
   try {
     const keys = await redis.keys(groupKeyPattern(groupFolder));
     if (keys.length === 0) {
-      logger.info(`[MEMORY] Session clear requested for group ${groupFolder}, no active session found`);
+      logger.info(
+        `[MEMORY] Session clear requested for group ${groupFolder}, no active session found`,
+      );
       return;
     }
     await redis.del(...keys);
     logger.info(`[MEMORY] Session cleared for group ${groupFolder} via IPC`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`[MEMORY-WARN] Session clear failed for group ${groupFolder}: ${message}`);
+    logger.warn(
+      `[MEMORY-WARN] Session clear failed for group ${groupFolder}: ${message}`,
+    );
   }
 }
 
@@ -291,7 +316,10 @@ export async function disconnectRedis(): Promise<void> {
 // --- Test helpers ---
 
 /** @internal - for tests only. Override the redis instance and availability flag. */
-export function _setRedisForTest(client: RedisClient | null, available: boolean): void {
+export function _setRedisForTest(
+  client: RedisClient | null,
+  available: boolean,
+): void {
   redis = client;
   redisAvailable = available;
 }

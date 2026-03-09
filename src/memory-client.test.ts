@@ -15,7 +15,10 @@ import {
  * Uses a simple Map with TTL tracking.
  */
 class MockRedis {
-  private store = new Map<string, { value: string; expiresAt: number | null }>();
+  private store = new Map<
+    string,
+    { value: string; expiresAt: number | null }
+  >();
   status = 'ready';
 
   async get(key: string): Promise<string | null> {
@@ -28,7 +31,12 @@ class MockRedis {
     return entry.value;
   }
 
-  async set(key: string, value: string, ex?: string, ttl?: number): Promise<'OK'> {
+  async set(
+    key: string,
+    value: string,
+    ex?: string,
+    ttl?: number,
+  ): Promise<'OK'> {
     const expiresAt = ex === 'EX' && ttl ? Date.now() + ttl * 1000 : null;
     this.store.set(key, { value, expiresAt });
     return 'OK';
@@ -76,7 +84,8 @@ function makePayload(overrides: Partial<SessionPayload> = {}): SessionPayload {
   return {
     sessionId: 'sess_test123',
     groupFolder: 'trip-planning',
-    conversationHistory: 'User: Find flights to Tokyo\nAssistant: Found 3 options.',
+    conversationHistory:
+      'User: Find flights to Tokyo\nAssistant: Found 3 options.',
     skillInvocations: [],
     agentNotes: '',
     createdAt: '2026-03-08T10:00:00.000Z',
@@ -140,7 +149,10 @@ describe('memory-client', () => {
   describe('group namespace isolation', () => {
     it('group A cannot read group B sessions', async () => {
       const payloadA = makePayload({ groupFolder: 'trip-planning' });
-      const payloadB = makePayload({ groupFolder: 'expense-tracking', sessionId: 'sess_xyz' });
+      const payloadB = makePayload({
+        groupFolder: 'expense-tracking',
+        sessionId: 'sess_xyz',
+      });
 
       await writeSession('trip-planning', 'sess_abc', payloadA);
       await writeSession('expense-tracking', 'sess_xyz', payloadB);
@@ -154,7 +166,11 @@ describe('memory-client', () => {
 
     it('clearing one group does not affect another', async () => {
       await writeSession('trip-planning', 'sess_1', makePayload());
-      await writeSession('expense-tracking', 'sess_2', makePayload({ sessionId: 'sess_2' }));
+      await writeSession(
+        'expense-tracking',
+        'sess_2',
+        makePayload({ sessionId: 'sess_2' }),
+      );
 
       await clearSession('trip-planning');
 
@@ -263,8 +279,9 @@ describe('memory-client', () => {
     it('truncates conversation history when payload exceeds 1MB', async () => {
       // Build a payload with very large conversation history
       const largeTurn = 'x'.repeat(100_000);
-      const turns = Array.from({ length: 15 }, (_, i) =>
-        `Turn ${i}: ${largeTurn}`,
+      const turns = Array.from(
+        { length: 15 },
+        (_, i) => `Turn ${i}: ${largeTurn}`,
       ).join('\n---\n');
 
       const payload = makePayload({ conversationHistory: turns });
