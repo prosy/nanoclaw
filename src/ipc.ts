@@ -10,7 +10,7 @@ import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { clearSession } from './memory-client.js';
-import { processSkillRequests } from './skill-ipc.js';
+import { processSkillRequests, resetSessionCounters } from './skill-ipc.js';
 import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
@@ -79,6 +79,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
               if (data.type === 'clear_session') {
                 // REQ-6.8.9: Clear session memory for the source group
                 await clearSession(sourceGroup);
+                resetSessionCounters(sourceGroup);
                 // Re-assemble CLAUDE.md with fresh session context
                 await assembleContext(sourceGroup).catch((err: unknown) => {
                   logger.warn({ err, sourceGroup }, 'Failed to reassemble CLAUDE.md after session clear');
@@ -465,6 +466,7 @@ export async function processTaskIpc(
     case 'clear_session':
       // REQ-6.8.9: session clear via task IPC
       await clearSession(sourceGroup);
+      resetSessionCounters(sourceGroup);
       await assembleContext(sourceGroup).catch((err: unknown) => {
         logger.warn({ err, sourceGroup }, 'Failed to reassemble CLAUDE.md after session clear');
       });

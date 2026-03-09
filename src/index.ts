@@ -6,6 +6,7 @@ import {
   CREDENTIAL_PROXY_PORT,
   IDLE_TIMEOUT,
   POLL_INTERVAL,
+  SKILLS_DIR,
   TIMEZONE,
   TRIGGER_PATTERN,
 } from './config.js';
@@ -60,6 +61,7 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
+import { resetTurnCounter, setSkillExecutor } from './skill-ipc.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -245,6 +247,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
 
+  // Reset A21 per-turn skill counter now that the turn is complete
+  resetTurnCounter(group.folder);
+
   if (output === 'error' || hadError) {
     // If we already sent output to the user, don't roll back the cursor —
     // the user got their response and re-processing would send duplicates.
@@ -310,7 +315,10 @@ async function runAgent(
     new Set(Object.keys(registeredGroups)),
   );
 
-  // Wrap onOutput to track session ID and write session to Redis (REQ-6.8.4)
+  // Wrap onOutput to track session ID and accumulate response text for Redis (REQ-6.8.4).
+  // We collect all streamed outputs and write a single session entry after the container
+  // exits, avoiding inflated turnCount and duplicate history from multiple streaming chunks.
+  const streamedResults: string[] = [];
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
         if (output.newSessionId) {
@@ -319,49 +327,12 @@ async function runAgent(
         }
         await onOutput(output);
 
-        // Async session write after response delivery (NFR-MEM-2)
-        if (output.result && isRedisAvailable()) {
-          const currentSessionId = sessions[group.folder];
-          if (currentSessionId) {
-            const responseText = typeof output.result === 'string'
-              ? output.result
-              : JSON.stringify(output.result);
-            const summarized = responseText.length > 2000
-              ? responseText.slice(0, 2000) + '...[truncated]'
-              : responseText;
-
-            const now = new Date().toISOString();
-            const turnEntry = `User: ${prompt.slice(0, 500)}\nAssistant: ${summarized}`;
-
-            const updatedPayload: SessionPayload = priorSession
-              ? {
-                  ...priorSession,
-                  sessionId: currentSessionId,
-                  conversationHistory: priorSession.conversationHistory
-                    ? `${priorSession.conversationHistory}\n---\n${turnEntry}`
-                    : turnEntry,
-                  updatedAt: now,
-                  turnCount: priorSession.turnCount + 1,
-                }
-              : {
-                  sessionId: currentSessionId,
-                  groupFolder: group.folder,
-                  conversationHistory: turnEntry,
-                  skillInvocations: [],
-                  agentNotes: '',
-                  createdAt: now,
-                  updatedAt: now,
-                  turnCount: 1,
-                };
-
-            // Fire-and-forget (REQ-6.8.4: non-blocking)
-            writeSession(group.folder, currentSessionId, updatedPayload).catch(
-              (err) => logger.warn({ err }, '[MEMORY-WARN] Background session write failed'),
-            );
-            // Update priorSession so subsequent streaming outputs in the same
-            // turn build on the latest state
-            priorSession = updatedPayload;
-          }
+        // Accumulate result text for the single session write at turn end
+        if (output.result) {
+          const text = typeof output.result === 'string'
+            ? output.result
+            : JSON.stringify(output.result);
+          streamedResults.push(text);
         }
       }
     : undefined;
@@ -385,6 +356,46 @@ async function runAgent(
     if (output.newSessionId) {
       sessions[group.folder] = output.newSessionId;
       setSession(group.folder, output.newSessionId);
+    }
+
+    // Write accumulated session to Redis once per turn (REQ-6.8.4, NFR-MEM-2)
+    if (streamedResults.length > 0 && isRedisAvailable()) {
+      const currentSessionId = sessions[group.folder];
+      if (currentSessionId) {
+        const combined = streamedResults.join('\n');
+        const summarized = combined.length > 2000
+          ? combined.slice(0, 2000) + '...[truncated]'
+          : combined;
+
+        const now = new Date().toISOString();
+        const turnEntry = `User: ${prompt.slice(0, 500)}\nAssistant: ${summarized}`;
+
+        const updatedPayload: SessionPayload = priorSession
+          ? {
+              ...priorSession,
+              sessionId: currentSessionId,
+              conversationHistory: priorSession.conversationHistory
+                ? `${priorSession.conversationHistory}\n---\n${turnEntry}`
+                : turnEntry,
+              updatedAt: now,
+              turnCount: priorSession.turnCount + 1,
+            }
+          : {
+              sessionId: currentSessionId,
+              groupFolder: group.folder,
+              conversationHistory: turnEntry,
+              skillInvocations: [],
+              agentNotes: '',
+              createdAt: now,
+              updatedAt: now,
+              turnCount: 1,
+            };
+
+        // Fire-and-forget (REQ-6.8.4: non-blocking)
+        writeSession(group.folder, currentSessionId, updatedPayload).catch(
+          (err) => logger.warn({ err }, '[MEMORY-WARN] Background session write failed'),
+        );
+      }
     }
 
     if (output.status === 'error') {
@@ -532,6 +543,32 @@ async function main(): Promise<void> {
   logger.info('Database initialized');
   initRedis(); // REQ-6.8.1: connect to Redis (non-blocking)
   loadState();
+
+  // Wire SkillRunner executor when SKILLS_DIR is configured (Fix: skill IPC was
+  // always returning SKILL_NOT_FOUND because no executor was wired at startup).
+  // Dynamic import because @travel/skill-runner lives in the travel_web monorepo
+  // and is not a dependency of NanoClaw — it may not be installed.
+  if (SKILLS_DIR) {
+    try {
+      const moduleName = '@travel/skill-runner';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mod = await (import(/* webpackIgnore: true */ moduleName) as Promise<any>);
+      const runner = mod.createSkillRunner({ skillsDir: SKILLS_DIR });
+      setSkillExecutor(async (input, config) => {
+        const result = await runner.execute({
+          skillDir: input.skillDir,
+          data: input.data,
+          timeoutSeconds: config.timeoutSeconds,
+        });
+        return result;
+      });
+      logger.info({ skillsDir: SKILLS_DIR }, 'SkillRunner executor wired');
+    } catch (err) {
+      logger.warn({ err, skillsDir: SKILLS_DIR }, 'SkillRunner not available — skill IPC will return SKILL_NOT_FOUND');
+    }
+  } else {
+    logger.info('SKILLS_DIR not set — skill IPC disabled');
+  }
 
   // Start credential proxy (containers route API calls through this)
   const proxyServer = await startCredentialProxy(
