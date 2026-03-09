@@ -6,7 +6,13 @@ import { readEnvFile } from './env.js';
 // Read config values from .env (falls back to process.env).
 // Secrets (API keys, tokens) are NOT read here — they are loaded only
 // by the credential proxy (credential-proxy.ts), never exposed to containers.
-const envConfig = readEnvFile(['ASSISTANT_NAME', 'ASSISTANT_HAS_OWN_NUMBER', 'SKILLS_DIR']);
+const envConfig = readEnvFile([
+  'ASSISTANT_NAME',
+  'ASSISTANT_HAS_OWN_NUMBER',
+  'SKILLS_DIR',
+  'REDIS_URL',
+  'SESSION_TTL_SECONDS',
+]);
 
 export const ASSISTANT_NAME =
   process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
@@ -76,3 +82,36 @@ export const TIMEZONE =
 // When unset, skill requests return SKILL_NOT_FOUND errors.
 export const SKILLS_DIR =
   process.env.SKILLS_DIR || envConfig.SKILLS_DIR || '';
+
+// --- Memory / Redis config (REQ-6.8.1, REQ-6.8.2) ---
+
+export const REDIS_URL =
+  process.env.REDIS_URL || envConfig.REDIS_URL || 'redis://localhost:6379';
+
+/**
+ * Session TTL in seconds. Default 7200 (2 hours).
+ * Clamped to [3600, 10800] per REQ-6.8.2.
+ */
+function parseSessionTtl(): number {
+  const raw = process.env.SESSION_TTL_SECONDS || envConfig.SESSION_TTL_SECONDS;
+  if (!raw) return 7200;
+
+  const parsed = parseInt(raw, 10);
+  if (isNaN(parsed)) {
+    console.warn('[MEMORY-WARN] SESSION_TTL_SECONDS is not a number, using default 7200');
+    return 7200;
+  }
+
+  if (parsed < 3600) {
+    console.warn(`[MEMORY-WARN] SESSION_TTL_SECONDS=${parsed} below minimum, clamping to 3600`);
+    return 3600;
+  }
+  if (parsed > 10800) {
+    console.warn(`[MEMORY-WARN] SESSION_TTL_SECONDS=${parsed} above maximum, clamping to 10800`);
+    return 10800;
+  }
+
+  return parsed;
+}
+
+export const SESSION_TTL_SECONDS = parseSessionTtl();

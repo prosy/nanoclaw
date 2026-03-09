@@ -26,6 +26,7 @@ import {
   ensureContainerRuntimeRunning,
   PROXY_BIND_HOST,
 } from './container-runtime.js';
+import { assembleContext } from './context-assembler.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -45,6 +46,13 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
+import {
+  disconnectRedis,
+  initRedis,
+  isRedisAvailable,
+  SessionPayload,
+  writeSession,
+} from './memory-client.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import {
   isSenderAllowed,
@@ -269,6 +277,14 @@ async function runAgent(
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
 
+  // Session read + CLAUDE.md augmentation (REQ-6.8.3, REQ-6.8.5)
+  let priorSession: SessionPayload | null = null;
+  try {
+    priorSession = await assembleContext(group.folder);
+  } catch (err) {
+    logger.warn({ err, group: group.name }, 'Context assembly failed, proceeding without session');
+  }
+
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();
   writeTasksSnapshot(
@@ -294,7 +310,7 @@ async function runAgent(
     new Set(Object.keys(registeredGroups)),
   );
 
-  // Wrap onOutput to track session ID from streamed results
+  // Wrap onOutput to track session ID and write session to Redis (REQ-6.8.4)
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
         if (output.newSessionId) {
@@ -302,6 +318,51 @@ async function runAgent(
           setSession(group.folder, output.newSessionId);
         }
         await onOutput(output);
+
+        // Async session write after response delivery (NFR-MEM-2)
+        if (output.result && isRedisAvailable()) {
+          const currentSessionId = sessions[group.folder];
+          if (currentSessionId) {
+            const responseText = typeof output.result === 'string'
+              ? output.result
+              : JSON.stringify(output.result);
+            const summarized = responseText.length > 2000
+              ? responseText.slice(0, 2000) + '...[truncated]'
+              : responseText;
+
+            const now = new Date().toISOString();
+            const turnEntry = `User: ${prompt.slice(0, 500)}\nAssistant: ${summarized}`;
+
+            const updatedPayload: SessionPayload = priorSession
+              ? {
+                  ...priorSession,
+                  sessionId: currentSessionId,
+                  conversationHistory: priorSession.conversationHistory
+                    ? `${priorSession.conversationHistory}\n---\n${turnEntry}`
+                    : turnEntry,
+                  updatedAt: now,
+                  turnCount: priorSession.turnCount + 1,
+                }
+              : {
+                  sessionId: currentSessionId,
+                  groupFolder: group.folder,
+                  conversationHistory: turnEntry,
+                  skillInvocations: [],
+                  agentNotes: '',
+                  createdAt: now,
+                  updatedAt: now,
+                  turnCount: 1,
+                };
+
+            // Fire-and-forget (REQ-6.8.4: non-blocking)
+            writeSession(group.folder, currentSessionId, updatedPayload).catch(
+              (err) => logger.warn({ err }, '[MEMORY-WARN] Background session write failed'),
+            );
+            // Update priorSession so subsequent streaming outputs in the same
+            // turn build on the latest state
+            priorSession = updatedPayload;
+          }
+        }
       }
     : undefined;
 
@@ -469,6 +530,7 @@ async function main(): Promise<void> {
   ensureContainerSystemRunning();
   initDatabase();
   logger.info('Database initialized');
+  initRedis(); // REQ-6.8.1: connect to Redis (non-blocking)
   loadState();
 
   // Start credential proxy (containers route API calls through this)
@@ -482,6 +544,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'Shutdown signal received');
     proxyServer.close();
     await queue.shutdown(10000);
+    await disconnectRedis();
     for (const ch of channels) await ch.disconnect();
     process.exit(0);
   };

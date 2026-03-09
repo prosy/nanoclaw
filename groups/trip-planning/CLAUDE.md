@@ -43,3 +43,7 @@ No active trip context. User requests will provide destination, dates, budget, a
 
 <!-- Injected by Context Assembler from memory store -->
 No preferences loaded.
+
+## Session Context
+
+No active session. This is a fresh conversation.
