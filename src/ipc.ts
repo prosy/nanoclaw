@@ -13,6 +13,21 @@ import { clearSession } from './memory-client.js';
 import { processSkillRequests, resetSessionCounters } from './skill-ipc.js';
 import { RegisteredGroup } from './types.js';
 
+export interface AgentRequestData {
+  requestId: string;
+  text: string;
+  sessionId?: string;
+  userContext?: Record<string, unknown>;
+  tripContext?: Record<string, unknown>;
+}
+
+export interface AgentRequestResult {
+  status: 'complete' | 'error';
+  response?: string | null;
+  error?: { code: string; message: string };
+  metadata?: { turnDurationMs: number; sessionId?: string };
+}
+
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
@@ -25,6 +40,10 @@ export interface IpcDeps {
     availableGroups: AvailableGroup[],
     registeredJids: Set<string>,
   ) => void;
+  handleAgentRequest?: (
+    groupFolder: string,
+    data: AgentRequestData,
+  ) => Promise<AgentRequestResult>;
 }
 
 let ipcWatcherRunning = false;
@@ -82,7 +101,10 @@ export function startIpcWatcher(deps: IpcDeps): void {
                 resetSessionCounters(sourceGroup);
                 // Re-assemble CLAUDE.md with fresh session context
                 await assembleContext(sourceGroup).catch((err: unknown) => {
-                  logger.warn({ err, sourceGroup }, 'Failed to reassemble CLAUDE.md after session clear');
+                  logger.warn(
+                    { err, sourceGroup },
+                    'Failed to reassemble CLAUDE.md after session clear',
+                  );
                 });
               } else if (data.type === 'message' && data.chatJid && data.text) {
                 // Authorization: verify this group can send to this chatJid
@@ -100,6 +122,48 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   logger.warn(
                     { chatJid: data.chatJid, sourceGroup },
                     'Unauthorized IPC message attempt blocked',
+                  );
+                }
+              } else if (
+                data.type === 'agent_request' &&
+                data.requestId &&
+                data.text
+              ) {
+                // Web-originated agent invocation (M2-P1 Task 1.3)
+                if (deps.handleAgentRequest) {
+                  const result = await deps.handleAgentRequest(sourceGroup, {
+                    requestId: data.requestId,
+                    text: data.text,
+                    sessionId: data.sessionId,
+                    userContext: data.userContext,
+                    tripContext: data.tripContext,
+                  });
+                  // Write response to IPC responses directory
+                  const responsesDir = path.join(
+                    ipcBaseDir,
+                    sourceGroup,
+                    'responses',
+                  );
+                  fs.mkdirSync(responsesDir, { recursive: true });
+                  fs.writeFileSync(
+                    path.join(responsesDir, `${data.requestId}.json`),
+                    JSON.stringify({
+                      requestId: data.requestId,
+                      ...result,
+                    }),
+                  );
+                  logger.info(
+                    {
+                      requestId: data.requestId,
+                      sourceGroup,
+                      status: result.status,
+                    },
+                    'Agent request processed',
+                  );
+                } else {
+                  logger.warn(
+                    { sourceGroup },
+                    'agent_request received but no handler configured',
                   );
                 }
               }
@@ -468,7 +532,10 @@ export async function processTaskIpc(
       await clearSession(sourceGroup);
       resetSessionCounters(sourceGroup);
       await assembleContext(sourceGroup).catch((err: unknown) => {
-        logger.warn({ err, sourceGroup }, 'Failed to reassemble CLAUDE.md after session clear');
+        logger.warn(
+          { err, sourceGroup },
+          'Failed to reassemble CLAUDE.md after session clear',
+        );
       });
       logger.info({ sourceGroup }, 'Session cleared via task IPC');
       break;

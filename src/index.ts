@@ -287,7 +287,10 @@ async function runAgent(
   try {
     priorSession = await assembleContext(group.folder);
   } catch (err) {
-    logger.warn({ err, group: group.name }, 'Context assembly failed, proceeding without session');
+    logger.warn(
+      { err, group: group.name },
+      'Context assembly failed, proceeding without session',
+    );
   }
 
   // Update tasks snapshot for container to read (filtered by group)
@@ -329,9 +332,10 @@ async function runAgent(
 
         // Accumulate result text for the single session write at turn end
         if (output.result) {
-          const text = typeof output.result === 'string'
-            ? output.result
-            : JSON.stringify(output.result);
+          const text =
+            typeof output.result === 'string'
+              ? output.result
+              : JSON.stringify(output.result);
           streamedResults.push(text);
         }
       }
@@ -363,9 +367,10 @@ async function runAgent(
       const currentSessionId = sessions[group.folder];
       if (currentSessionId) {
         const combined = streamedResults.join('\n');
-        const summarized = combined.length > 2000
-          ? combined.slice(0, 2000) + '...[truncated]'
-          : combined;
+        const summarized =
+          combined.length > 2000
+            ? combined.slice(0, 2000) + '...[truncated]'
+            : combined;
 
         const now = new Date().toISOString();
         const turnEntry = `User: ${prompt.slice(0, 500)}\nAssistant: ${summarized}`;
@@ -393,7 +398,11 @@ async function runAgent(
 
         // Fire-and-forget (REQ-6.8.4: non-blocking)
         writeSession(group.folder, currentSessionId, updatedPayload).catch(
-          (err) => logger.warn({ err }, '[MEMORY-WARN] Background session write failed'),
+          (err) =>
+            logger.warn(
+              { err },
+              '[MEMORY-WARN] Background session write failed',
+            ),
         );
       }
     }
@@ -552,7 +561,9 @@ async function main(): Promise<void> {
     try {
       const moduleName = '@travel/skill-runner';
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mod = await (import(/* webpackIgnore: true */ moduleName) as Promise<any>);
+      const mod = await (import(
+        /* webpackIgnore: true */ moduleName
+      ) as Promise<any>);
       const runner = mod.createSkillRunner({ skillsDir: SKILLS_DIR });
       setSkillExecutor(async (input, config) => {
         const result = await runner.execute({
@@ -564,7 +575,10 @@ async function main(): Promise<void> {
       });
       logger.info({ skillsDir: SKILLS_DIR }, 'SkillRunner executor wired');
     } catch (err) {
-      logger.warn({ err, skillsDir: SKILLS_DIR }, 'SkillRunner not available — skill IPC will return SKILL_NOT_FOUND');
+      logger.warn(
+        { err, skillsDir: SKILLS_DIR },
+        'SkillRunner not available — skill IPC will return SKILL_NOT_FOUND',
+      );
     }
   } else {
     logger.info('SKILLS_DIR not set — skill IPC disabled');
@@ -675,6 +689,58 @@ async function main(): Promise<void> {
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) =>
       writeGroupsSnapshot(gf, im, ag, rj),
+    handleAgentRequest: async (groupFolder, data) => {
+      const startTime = Date.now();
+
+      // Construct synthetic RegisteredGroup for web user
+      const webGroup: RegisteredGroup = {
+        name: groupFolder,
+        folder: groupFolder,
+        trigger: '',
+        added_at: new Date().toISOString(),
+      };
+
+      const chatJid = `web:${groupFolder.replace(/^web-/, '')}`;
+      const results: string[] = [];
+
+      const status = await runAgent(
+        webGroup,
+        data.text,
+        chatJid,
+        async (output) => {
+          if (output.result) {
+            const raw =
+              typeof output.result === 'string'
+                ? output.result
+                : JSON.stringify(output.result);
+            // Strip <internal> blocks (same as WhatsApp path)
+            const text = raw
+              .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+              .trim();
+            if (text) results.push(text);
+          }
+        },
+      );
+
+      resetTurnCounter(groupFolder);
+
+      const turnDurationMs = Date.now() - startTime;
+      const sessionId = sessions[groupFolder];
+
+      if (status === 'error') {
+        return {
+          status: 'error' as const,
+          error: { code: 'AGENT_ERROR', message: 'Agent invocation failed' },
+          metadata: { turnDurationMs, sessionId },
+        };
+      }
+
+      return {
+        status: 'complete' as const,
+        response: results.join('\n') || null,
+        metadata: { turnDurationMs, sessionId },
+      };
+    },
   });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
