@@ -3,6 +3,7 @@ import path from 'path';
 
 import {
   ASSISTANT_NAME,
+  CONTAINER_TIMEOUT,
   CREDENTIAL_PROXY_PORT,
   HEADLESS,
   IDLE_TIMEOUT,
@@ -709,7 +710,17 @@ async function main(): Promise<void> {
       const chatJid = `web:${groupFolder.replace(/^web-/, '')}`;
       const results: string[] = [];
 
-      const status = await runAgent(
+      // Promise that resolves on first agent output (decouples IPC response from container lifecycle)
+      let resolveFirstOutput: () => void;
+      let rejectFirstOutput: (err: Error) => void;
+      const firstOutputPromise = new Promise<void>((resolve, reject) => {
+        resolveFirstOutput = resolve;
+        rejectFirstOutput = reject;
+      });
+      let firstOutputReceived = false;
+
+      // Start agent — do NOT await (container runs independently for multi-turn)
+      const agentPromise = runAgent(
         webGroup,
         data.text,
         chatJid,
@@ -723,23 +734,76 @@ async function main(): Promise<void> {
             const text = raw
               .replace(/<internal>[\s\S]*?<\/internal>/g, '')
               .trim();
-            if (text) results.push(text);
+            if (text) {
+              results.push(text);
+              if (!firstOutputReceived) {
+                firstOutputReceived = true;
+                resolveFirstOutput();
+              }
+            }
           }
         },
       );
 
+      // Race: first output vs container timeout vs agent error
+      const timeoutMs = CONTAINER_TIMEOUT;
+      let timeoutHandle: ReturnType<typeof setTimeout>;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error('AGENT_TIMEOUT')),
+          timeoutMs,
+        );
+      });
+
+      // Also resolve if agent finishes (error or success) before first output
+      const agentDonePromise = agentPromise.then((status) => {
+        if (!firstOutputReceived && status === 'error') {
+          rejectFirstOutput(new Error('AGENT_ERROR'));
+        }
+      });
+
+      try {
+        await Promise.race([firstOutputPromise, timeoutPromise, agentDonePromise]);
+      } catch (err) {
+        clearTimeout(timeoutHandle!);
+        const turnDurationMs = Date.now() - startTime;
+        const sessionId = sessions[groupFolder];
+        const code = (err as Error).message === 'AGENT_TIMEOUT'
+          ? 'AGENT_TIMEOUT' : 'AGENT_ERROR';
+
+        logger.error(
+          { groupFolder, code, turnDurationMs, requestId: data.requestId },
+          'Agent request failed',
+        );
+
+        // Let agent/container clean up in background
+        agentPromise.catch((e) =>
+          logger.warn({ err: e, groupFolder }, 'Agent cleanup error (post-timeout)'),
+        );
+
+        return {
+          status: 'error' as const,
+          error: { code, message: code === 'AGENT_TIMEOUT'
+            ? 'Agent did not respond in time' : 'Agent invocation failed' },
+          metadata: { turnDurationMs, sessionId },
+        };
+      }
+
+      clearTimeout(timeoutHandle!);
       resetTurnCounter(groupFolder);
 
       const turnDurationMs = Date.now() - startTime;
       const sessionId = sessions[groupFolder];
 
-      if (status === 'error') {
-        return {
-          status: 'error' as const,
-          error: { code: 'AGENT_ERROR', message: 'Agent invocation failed' },
-          metadata: { turnDurationMs, sessionId },
-        };
-      }
+      logger.info(
+        { groupFolder, turnDurationMs, requestId: data.requestId },
+        'Agent request completed (IPC response ready)',
+      );
+
+      // Let agent finish session write + container cleanup in background
+      agentPromise.catch((err) =>
+        logger.warn({ err, groupFolder }, 'Agent background error (post-response)'),
+      );
 
       return {
         status: 'complete' as const,
