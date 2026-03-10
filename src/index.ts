@@ -763,13 +763,19 @@ async function main(): Promise<void> {
       });
 
       try {
-        await Promise.race([firstOutputPromise, timeoutPromise, agentDonePromise]);
+        await Promise.race([
+          firstOutputPromise,
+          timeoutPromise,
+          agentDonePromise,
+        ]);
       } catch (err) {
         clearTimeout(timeoutHandle!);
         const turnDurationMs = Date.now() - startTime;
         const sessionId = sessions[groupFolder];
-        const code = (err as Error).message === 'AGENT_TIMEOUT'
-          ? 'AGENT_TIMEOUT' : 'AGENT_ERROR';
+        const code =
+          (err as Error).message === 'AGENT_TIMEOUT'
+            ? 'AGENT_TIMEOUT'
+            : 'AGENT_ERROR';
 
         logger.error(
           { groupFolder, code, turnDurationMs, requestId: data.requestId },
@@ -778,13 +784,21 @@ async function main(): Promise<void> {
 
         // Let agent/container clean up in background
         agentPromise.catch((e) =>
-          logger.warn({ err: e, groupFolder }, 'Agent cleanup error (post-timeout)'),
+          logger.warn(
+            { err: e, groupFolder },
+            'Agent cleanup error (post-timeout)',
+          ),
         );
 
         return {
           status: 'error' as const,
-          error: { code, message: code === 'AGENT_TIMEOUT'
-            ? 'Agent did not respond in time' : 'Agent invocation failed' },
+          error: {
+            code,
+            message:
+              code === 'AGENT_TIMEOUT'
+                ? 'Agent did not respond in time'
+                : 'Agent invocation failed',
+          },
           metadata: { turnDurationMs, sessionId },
         };
       }
@@ -802,7 +816,10 @@ async function main(): Promise<void> {
 
       // Let agent finish session write + container cleanup in background
       agentPromise.catch((err) =>
-        logger.warn({ err, groupFolder }, 'Agent background error (post-response)'),
+        logger.warn(
+          { err, groupFolder },
+          'Agent background error (post-response)',
+        ),
       );
 
       return {

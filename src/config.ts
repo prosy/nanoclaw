@@ -62,9 +62,13 @@ export const IPC_POLL_INTERVAL = 1000;
 // Headless mode (web-only): 2min default for faster IPC response cycles.
 // Messaging mode: 30min default to keep containers alive for multi-turn WhatsApp conversations.
 // Explicit IDLE_TIMEOUT env var always overrides.
-const isHeadless = (process.env.NANOCLAW_HEADLESS || envConfig.NANOCLAW_HEADLESS) === 'true';
+const isHeadless =
+  (process.env.NANOCLAW_HEADLESS || envConfig.NANOCLAW_HEADLESS) === 'true';
 const IDLE_TIMEOUT_DEFAULT = isHeadless ? '120000' : '1800000';
-export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || IDLE_TIMEOUT_DEFAULT, 10);
+export const IDLE_TIMEOUT = parseInt(
+  process.env.IDLE_TIMEOUT || IDLE_TIMEOUT_DEFAULT,
+  10,
+);
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,
