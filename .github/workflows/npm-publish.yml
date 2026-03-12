@@ -1,0 +1,62 @@
+# npm package build, source protection gate, and publish (M2-P3 T5.1, T5.2)
+# Triggers on version tags only (Docker publish handles main branch pushes).
+
+name: npm Publish
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # T5.2: Source protection gate
+      - name: Source protection gate
+        run: |
+          echo "Checking npm pack contents for .ts source files..."
+          PACK_LIST=$(npm pack --dry-run 2>&1)
+
+          # Check for .ts files (excluding .d.ts)
+          TS_FILES=$(echo "$PACK_LIST" | grep '\.ts$' | grep -v '\.d\.ts$' || true)
+
+          if [ -n "$TS_FILES" ]; then
+            echo "[CI-ERR] Source files detected in npm package. Build is rejected."
+            echo "Files found:"
+            echo "$TS_FILES"
+            exit 1
+          fi
+
+          # Check for tsconfig.json
+          TSCONFIG=$(echo "$PACK_LIST" | grep 'tsconfig.json' || true)
+
+          if [ -n "$TSCONFIG" ]; then
+            echo "[CI-ERR] tsconfig.json found in npm package. Build is rejected."
+            exit 1
+          fi
+
+          echo "Source protection gate passed — no .ts source files in package."
+
+      - name: Publish
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

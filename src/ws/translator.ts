@@ -107,7 +107,9 @@ export function writeTaskToIpc(
     text: `[skill:${msg.skill}] ${JSON.stringify(msg.input)}`,
     chatJid: `web:${userId}`,
     timestamp: new Date().toISOString(),
-    ...(msg.confirmation_token ? { confirmationToken: msg.confirmation_token } : {}),
+    ...(msg.confirmation_token
+      ? { confirmationToken: msg.confirmation_token }
+      : {}),
   };
 
   const tmpPath = path.join(messagesDir, `${msg.task_id}.tmp`);
@@ -130,7 +132,12 @@ export function readTaskResult(
   taskId: string,
 ): TaskResultMessage | null {
   const groupFolder = `web-${userId}`;
-  const responsePath = path.join(ipcDir, groupFolder, 'responses', `${taskId}.json`);
+  const responsePath = path.join(
+    ipcDir,
+    groupFolder,
+    'responses',
+    `${taskId}.json`,
+  );
 
   if (!fs.existsSync(responsePath)) return null;
 
@@ -141,12 +148,24 @@ export function readTaskResult(
     const ipcResponse = JSON.parse(raw);
 
     // Translate NanoClaw IPC format -> WS protocol
+    // Support pending_confirmation status for TRAVEL-003
+    let status: TaskResultMessage['status'];
+    if (ipcResponse.status === 'complete') {
+      status = 'completed';
+    } else if (ipcResponse.status === 'pending_confirmation') {
+      status = 'pending_confirmation';
+    } else {
+      status = 'failed';
+    }
+
     return {
       type: 'task_result',
       task_id: taskId,
-      status: ipcResponse.status === 'complete' ? 'completed' : 'failed',
+      status,
       output: ipcResponse.response
-        ? { text: ipcResponse.response }
+        ? typeof ipcResponse.response === 'string'
+          ? { text: ipcResponse.response }
+          : ipcResponse.response
         : {},
       error: ipcResponse.error?.message,
     };
@@ -160,4 +179,28 @@ export function readTaskResult(
       error: 'Internal error reading task result',
     };
   }
+}
+
+/**
+ * Write a cancellation file to the IPC directory (TRAVEL-003).
+ * Used when a confirmation times out or is denied.
+ */
+export function writeCancelToIpc(
+  ipcDir: string,
+  userId: string,
+  taskId: string,
+  reason: string,
+): void {
+  const groupFolder = `web-${userId}`;
+  const messagesDir = path.join(ipcDir, groupFolder, 'messages');
+  fs.mkdirSync(messagesDir, { recursive: true });
+
+  const cancelPath = path.join(messagesDir, `${taskId}.cancel.json`);
+  fs.writeFileSync(
+    cancelPath,
+    JSON.stringify({ taskId, reason, timestamp: new Date().toISOString() }),
+    'utf-8',
+  );
+
+  logger.info({ taskId, reason }, 'WS cancel file written to IPC');
 }

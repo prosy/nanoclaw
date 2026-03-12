@@ -1,0 +1,32 @@
+# Source files (never ship in image)
+src/
+*.ts
+!*.d.ts
+tsconfig.json
+
+# Tests
+**/*.test.ts
+**/*.test.js
+__tests__/
+
+# Dev/build artifacts
+.git/
+.github/
+.husky/
+.prettier*
+.eslint*
+docs/
+*.md
+
+# Environment files
+.env
+.env.*
+
+# Runtime data (mounted as volumes)
+store/
+groups/
+data/
+
+# Node dev
+node_modules/
+coverage/

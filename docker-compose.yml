@@ -1,0 +1,76 @@
+# NanoClaw Full Stack (M2-P3 T4.2, REQ-11.1)
+# Stack: NanoClaw + PostgreSQL/pgvector + Redis + Mem0
+# Ollama runs on the host per DD-43 (on-device TLM)
+
+services:
+  nanoclaw:
+    image: ghcr.io/prosy/nanoclaw-travel:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:9347:9347"  # WS server, localhost only
+    volumes:
+      - nanoclaw-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock  # Skill container management
+    environment:
+      - NODE_ENV=production
+      - WS_PORT=9347
+      - WS_BIND=0.0.0.0  # Inside container, bind all interfaces
+      - WS_AUTH_SECRET=${WS_AUTH_SECRET:?WS_AUTH_SECRET is required. Run 'nanoclaw setup' to configure.}
+      - REDIS_URL=redis://redis:6379
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - NANOCLAW_HEADLESS=${NANOCLAW_HEADLESS:-true}
+      - SKILLS_DIR=/app/skills
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=nanoclaw
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${PG_PASSWORD:-nanoclaw}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  mem0:
+    image: mem0ai/mem0:latest
+    environment:
+      - DATABASE_URL=postgresql://postgres:${PG_PASSWORD:-nanoclaw}@postgres:5432/nanoclaw
+      - EMBEDDER_PROVIDER=${EMBEDDER_PROVIDER:-ollama}
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  nanoclaw-data:
+  pg-data:
+  redis-data:

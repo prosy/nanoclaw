@@ -19,11 +19,11 @@ import { logger } from '../logger.js';
 // ---------------------------------------------------------------------------
 
 export interface WSTokenPayload {
-  sub: string;      // Auth0 user ID
-  exp: number;      // Expiration (Unix timestamp)
-  iss: string;      // Issuer ("travel-aw-vercel")
-  iat: number;      // Issued at
-  userId?: string;  // Internal user ID
+  sub: string; // Auth0 user ID
+  exp: number; // Expiration (Unix timestamp)
+  iss: string; // Issuer ("travel-aw-vercel")
+  iat: number; // Issued at
+  userId?: string; // Internal user ID
 }
 
 export interface AuthResult {

@@ -5,7 +5,11 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { validateTaskSubmit, writeTaskToIpc, readTaskResult } from './translator.js';
+import {
+  validateTaskSubmit,
+  writeTaskToIpc,
+  readTaskResult,
+} from './translator.js';
 
 describe('validateTaskSubmit', () => {
   it('accepts valid task_submit', () => {
@@ -24,22 +28,39 @@ describe('validateTaskSubmit', () => {
   });
 
   it('rejects unknown message type', () => {
-    const result = validateTaskSubmit({ type: 'unknown', task_id: 'x', skill: 's', input: {} });
+    const result = validateTaskSubmit({
+      type: 'unknown',
+      task_id: 'x',
+      skill: 's',
+      input: {},
+    });
     expect(result).toMatch(/Unknown message type/);
   });
 
   it('rejects missing task_id', () => {
-    const result = validateTaskSubmit({ type: 'task_submit', skill: 's', input: {} });
+    const result = validateTaskSubmit({
+      type: 'task_submit',
+      skill: 's',
+      input: {},
+    });
     expect(result).toMatch(/task_id/);
   });
 
   it('rejects missing skill', () => {
-    const result = validateTaskSubmit({ type: 'task_submit', task_id: 'x', input: {} });
+    const result = validateTaskSubmit({
+      type: 'task_submit',
+      task_id: 'x',
+      input: {},
+    });
     expect(result).toMatch(/skill/);
   });
 
   it('rejects missing input', () => {
-    const result = validateTaskSubmit({ type: 'task_submit', task_id: 'x', skill: 's' });
+    const result = validateTaskSubmit({
+      type: 'task_submit',
+      task_id: 'x',
+      skill: 's',
+    });
     expect(result).toMatch(/input/);
   });
 });
@@ -63,7 +84,12 @@ describe('writeTaskToIpc / readTaskResult', () => {
       input: { origin: 'SEA' },
     });
 
-    const filePath = path.join(tmpDir, 'web-user1', 'messages', 'task-001.json');
+    const filePath = path.join(
+      tmpDir,
+      'web-user1',
+      'messages',
+      'task-001.json',
+    );
     expect(fs.existsSync(filePath)).toBe(true);
 
     const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));

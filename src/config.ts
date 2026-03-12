@@ -140,6 +140,13 @@ export const HEADLESS =
 
 export const WS_PORT = parseInt(process.env.WS_PORT || '9347', 10);
 export const WS_BIND = process.env.WS_BIND || '127.0.0.1';
-export const WS_AUTH_SECRET = process.env.WS_AUTH_SECRET || process.env.AUTH_SECRET || '';
+export const WS_AUTH_SECRET =
+  process.env.WS_AUTH_SECRET || process.env.AUTH_SECRET || '';
 /** Enable WS bridge. Requires WS_AUTH_SECRET to be set. */
 export const WS_ENABLED = WS_AUTH_SECRET.length > 0;
+
+/** Confirmation timeout in ms (TRAVEL-003). Default 5 minutes. */
+export const WS_CONFIRMATION_TIMEOUT_MS = parseInt(
+  process.env.WS_CONFIRMATION_TIMEOUT_MS || '300000',
+  10,
+);

@@ -8,10 +8,17 @@ import { verifyToken, extractToken } from './auth.js';
 const TEST_SECRET = 'test-secret-key-for-ws-auth';
 
 function base64url(buf: Buffer): string {
-  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return buf
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
-function makeToken(payload: Record<string, unknown>, secret = TEST_SECRET): string {
+function makeToken(
+  payload: Record<string, unknown>,
+  secret = TEST_SECRET,
+): string {
   const header = { alg: 'HS256', typ: 'JWT' };
   const headerB64 = base64url(Buffer.from(JSON.stringify(header)));
   const payloadB64 = base64url(Buffer.from(JSON.stringify(payload)));
@@ -60,7 +67,12 @@ describe('verifyToken', () => {
   it('rejects token with wrong secret', () => {
     const now = Math.floor(Date.now() / 1000);
     const token = makeToken(
-      { sub: 'auth0|user1', iss: 'travel-aw-vercel', iat: now, exp: now + 3600 },
+      {
+        sub: 'auth0|user1',
+        iss: 'travel-aw-vercel',
+        iat: now,
+        exp: now + 3600,
+      },
       'wrong-secret',
     );
 

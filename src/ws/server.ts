@@ -16,13 +16,14 @@ import { IncomingMessage, createServer, Server as HttpServer } from 'http';
 
 import { WebSocketServer, WebSocket } from 'ws';
 
-import { DATA_DIR } from '../config.js';
+import { DATA_DIR, WS_CONFIRMATION_TIMEOUT_MS } from '../config.js';
 import { logger } from '../logger.js';
 import { extractToken, verifyToken, type WSTokenPayload } from './auth.js';
 import {
   validateTaskSubmit,
   writeTaskToIpc,
   readTaskResult,
+  writeCancelToIpc,
   type TaskSubmitMessage,
 } from './translator.js';
 
@@ -32,11 +33,19 @@ import path from 'path';
 // Types
 // ---------------------------------------------------------------------------
 
+interface PendingConfirmation {
+  taskId: string;
+  timer: ReturnType<typeof setTimeout>;
+  userId: string;
+}
+
 interface AuthenticatedClient {
   ws: WebSocket;
   payload: WSTokenPayload;
   /** Pending task IDs being polled for results */
   pendingTasks: Set<string>;
+  /** Tasks awaiting user confirmation (TRAVEL-003) */
+  pendingConfirmations: Map<string, PendingConfirmation>;
 }
 
 export interface WSServerOptions {
@@ -123,8 +132,12 @@ export class NanoClawWSServer {
       this.pollTimer = null;
     }
 
-    // Close all client connections
-    for (const [ws] of this.clients) {
+    // Close all client connections, clear confirmation timers
+    for (const [ws, client] of this.clients) {
+      for (const [, pc] of client.pendingConfirmations) {
+        clearTimeout(pc.timer);
+      }
+      client.pendingConfirmations.clear();
       ws.close(1001, 'Server shutting down');
     }
     this.clients.clear();
@@ -149,7 +162,10 @@ export class NanoClawWSServer {
 
     const auth = verifyToken(token, this.authSecret);
     if (!auth.valid || !auth.payload) {
-      ws.close(auth.closeCode ?? 4003, auth.error ?? 'Invalid or expired token');
+      ws.close(
+        auth.closeCode ?? 4003,
+        auth.error ?? 'Invalid or expired token',
+      );
       logger.warn(
         { remoteIp: req.socket.remoteAddress, error: auth.error },
         '[WS-AUTH] Connection rejected',
@@ -161,22 +177,27 @@ export class NanoClawWSServer {
       ws,
       payload: auth.payload,
       pendingTasks: new Set(),
+      pendingConfirmations: new Map(),
     };
     this.clients.set(ws, client);
 
-    logger.info(
-      { userId: auth.payload.sub },
-      '[WS] Client connected',
-    );
+    logger.info({ userId: auth.payload.sub }, '[WS] Client connected');
 
     ws.on('message', (data) => this.handleMessage(client, data.toString()));
 
     ws.on('close', () => {
+      // TRAVEL-003: connection drop during pending confirmation = DENY
+      // Timers continue running; they will fire and write cancel files.
+      // Clear client reference but let timers complete.
+      for (const [, pc] of client.pendingConfirmations) {
+        // Timer still fires, writes cancel. No client to notify (disconnected).
+        logger.info(
+          { taskId: pc.taskId },
+          '[WS-CONFIRM] Client disconnected during pending confirmation -- DENY default applies',
+        );
+      }
       this.clients.delete(ws);
-      logger.info(
-        { userId: auth.payload!.sub },
-        '[WS] Client disconnected',
-      );
+      logger.info({ userId: auth.payload!.sub }, '[WS] Client disconnected');
     });
 
     ws.on('error', (err) => {
@@ -214,12 +235,33 @@ export class NanoClawWSServer {
     const userId = client.payload.userId ?? client.payload.sub;
     const ipcDir = path.join(DATA_DIR, 'ipc');
 
+    // TRAVEL-003: if this is a confirmation submission, clear the confirmation timer
+    if (taskMsg.confirmation_token) {
+      // Find and clear any pending confirmation for this skill
+      // The confirmation_token submission is a NEW task_submit, so it gets its own task_id.
+      // We clear confirmations by matching the skill name (the original task's timer).
+      for (const [origTaskId, pc] of client.pendingConfirmations) {
+        clearTimeout(pc.timer);
+        client.pendingConfirmations.delete(origTaskId);
+        logger.info(
+          { originalTaskId: origTaskId, newTaskId: taskMsg.task_id },
+          '[WS-CONFIRM] Confirmation received -- timer cleared',
+        );
+        break; // Only one pending confirmation per skill in V1
+      }
+    }
+
     // Write to IPC
     try {
       writeTaskToIpc(ipcDir, userId, taskMsg);
     } catch (err) {
       logger.error({ err, taskId: taskMsg.task_id }, '[WS] IPC write failed');
-      this.sendError(client.ws, 'IPC_WRITE_FAILED', 'Failed to write task to IPC', taskMsg.task_id);
+      this.sendError(
+        client.ws,
+        'IPC_WRITE_FAILED',
+        'Failed to write task to IPC',
+        taskMsg.task_id,
+      );
       return;
     }
 
@@ -262,10 +304,47 @@ export class NanoClawWSServer {
           if (result) {
             client.pendingTasks.delete(taskId);
             this.send(client.ws, result);
+
+            // TRAVEL-003: if result is pending_confirmation, start confirmation timer
+            if (result.status === 'pending_confirmation') {
+              this.startConfirmationTimer(client, taskId, userId, ipcDir);
+            }
           }
         }
       }
     }, RESULT_POLL_INTERVAL_MS);
+  }
+
+  // -------------------------------------------------------------------------
+  // TRAVEL-003: Confirmation timeout (REQ-T1.5.1)
+  // -------------------------------------------------------------------------
+
+  private startConfirmationTimer(
+    client: AuthenticatedClient,
+    taskId: string,
+    userId: string,
+    ipcDir: string,
+  ): void {
+    const timer = setTimeout(() => {
+      // Timeout expired without confirmation -- DENY
+      client.pendingConfirmations.delete(taskId);
+
+      // Write cancellation file to IPC
+      writeCancelToIpc(ipcDir, userId, taskId, 'confirmation_timeout');
+
+      // Notify client (if still connected)
+      this.send(client.ws, {
+        type: 'task_result',
+        task_id: taskId,
+        status: 'failed',
+        output: {},
+        error: 'Confirmation timed out. Action was not performed.',
+      });
+
+      logger.info({ taskId }, '[WS-CONFIRM] Timeout for task -- action denied');
+    }, WS_CONFIRMATION_TIMEOUT_MS);
+
+    client.pendingConfirmations.set(taskId, { taskId, timer, userId });
   }
 
   // -------------------------------------------------------------------------
@@ -278,7 +357,12 @@ export class NanoClawWSServer {
     }
   }
 
-  private sendError(ws: WebSocket, code: string, detail: string, taskId?: string): void {
+  private sendError(
+    ws: WebSocket,
+    code: string,
+    detail: string,
+    taskId?: string,
+  ): void {
     this.send(ws, {
       type: 'error',
       code,
