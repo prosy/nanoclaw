@@ -19,9 +19,7 @@ async function checkPrereqs(): Promise<{ ok: boolean; errors: string[] }> {
   const nodeVersion = process.version;
   const major = parseInt(nodeVersion.slice(1).split('.')[0], 10);
   if (major < 20) {
-    errors.push(
-      `[DEP-ERR] Node.js 20+ required. Current: ${nodeVersion}.`,
-    );
+    errors.push(`[DEP-ERR] Node.js 20+ required. Current: ${nodeVersion}.`);
   }
 
   // Docker check
@@ -75,8 +73,9 @@ async function healthCommand(): Promise<void> {
 }
 
 async function setupCommand(): Promise<void> {
-  const token = process.argv.find((a) => a.startsWith('--token='))?.split('=')[1]
-    ?? process.argv[process.argv.indexOf('--token') + 1];
+  const token =
+    process.argv.find((a) => a.startsWith('--token='))?.split('=')[1] ??
+    process.argv[process.argv.indexOf('--token') + 1];
 
   if (!token) {
     console.error('[SETUP-ERR] Usage: nanoclaw setup --token <invite-token>');
@@ -122,7 +121,8 @@ async function setupCommand(): Promise<void> {
           ws_port: 9347,
           ws_bind: '127.0.0.1',
           ollama_host: 'http://localhost:11434',
-          database_url: 'postgresql://postgres:nanoclaw@localhost:5432/nanoclaw',
+          database_url:
+            'postgresql://postgres:nanoclaw@localhost:5432/nanoclaw',
           redis_url: 'redis://localhost:6379',
         },
         null,

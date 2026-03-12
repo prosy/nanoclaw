@@ -12,10 +12,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
-  readTaskResult,
-  writeCancelToIpc,
-} from './translator.js';
+import { readTaskResult, writeCancelToIpc } from './translator.js';
 
 describe('TRAVEL-003: readTaskResult pending_confirmation', () => {
   let tmpDir: string;
