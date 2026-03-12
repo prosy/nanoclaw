@@ -19,6 +19,10 @@ export interface AgentRequestData {
   sessionId?: string;
   userContext?: Record<string, unknown>;
   tripContext?: Record<string, unknown>;
+  /** Agent ID from web registry — used for provider mapping (T6.4) */
+  agentId?: string;
+  /** Agent provider string — maps to Docker image (T6.4) */
+  agentProvider?: string;
 }
 
 export interface AgentRequestResult {
@@ -137,6 +141,8 @@ export function startIpcWatcher(deps: IpcDeps): void {
                     sessionId: data.sessionId,
                     userContext: data.userContext,
                     tripContext: data.tripContext,
+                    agentId: data.agentId,
+                    agentProvider: data.agentProvider,
                   });
                   // Write response to IPC responses directory
                   const responsesDir = path.join(

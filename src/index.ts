@@ -11,6 +11,10 @@ import {
   SKILLS_DIR,
   TIMEZONE,
   TRIGGER_PATTERN,
+  WS_AUTH_SECRET,
+  WS_BIND,
+  WS_ENABLED,
+  WS_PORT,
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
 import './channels/index.js';
@@ -66,6 +70,7 @@ import {
 import { resetTurnCounter, setSkillExecutor } from './skill-ipc.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
+import { NanoClawWSServer } from './ws/index.js';
 import { logger } from './logger.js';
 
 // Re-export for backwards compatibility during refactor
@@ -280,6 +285,7 @@ async function runAgent(
   prompt: string,
   chatJid: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
+  agentImage?: string,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
@@ -353,6 +359,7 @@ async function runAgent(
         chatJid,
         isMain,
         assistantName: ASSISTANT_NAME,
+        agentImage,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
@@ -592,9 +599,28 @@ async function main(): Promise<void> {
     PROXY_BIND_HOST,
   );
 
+  // Start WebSocket bridge if configured (M2-P3, REQ-10.1)
+  let wsServer: NanoClawWSServer | null = null;
+  if (WS_ENABLED) {
+    wsServer = new NanoClawWSServer({
+      port: WS_PORT,
+      bind: WS_BIND,
+      authSecret: WS_AUTH_SECRET,
+    });
+    try {
+      await wsServer.start();
+    } catch (err) {
+      logger.fatal({ err }, 'Failed to start WebSocket server');
+      process.exit(1);
+    }
+  } else {
+    logger.info('[WS] WebSocket bridge disabled (WS_AUTH_SECRET not set)');
+  }
+
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
+    if (wsServer) await wsServer.shutdown();
     proxyServer.close();
     await queue.shutdown(10000);
     await disconnectRedis();
@@ -720,6 +746,7 @@ async function main(): Promise<void> {
       let firstOutputReceived = false;
 
       // Start agent — do NOT await (container runs independently for multi-turn)
+      // T6.4: pass provider string for Docker image mapping
       const agentPromise = runAgent(
         webGroup,
         data.text,
@@ -743,6 +770,7 @@ async function main(): Promise<void> {
             }
           }
         },
+        data.agentProvider, // T6.4: provider -> Docker image mapping
       );
 
       // Race: first output vs container timeout vs agent error

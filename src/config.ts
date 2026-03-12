@@ -135,3 +135,11 @@ export const SESSION_TTL_SECONDS = parseSessionTtl();
 // When true, skips the fatal exit on zero channels — IPC watcher + scheduler still run.
 export const HEADLESS =
   (process.env.NANOCLAW_HEADLESS || envConfig.NANOCLAW_HEADLESS) === 'true';
+
+// --- WebSocket bridge config (M2-P3, REQ-10.1) ---
+
+export const WS_PORT = parseInt(process.env.WS_PORT || '9347', 10);
+export const WS_BIND = process.env.WS_BIND || '127.0.0.1';
+export const WS_AUTH_SECRET = process.env.WS_AUTH_SECRET || process.env.AUTH_SECRET || '';
+/** Enable WS bridge. Requires WS_AUTH_SECRET to be set. */
+export const WS_ENABLED = WS_AUTH_SECRET.length > 0;

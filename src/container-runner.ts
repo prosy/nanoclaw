@@ -18,6 +18,43 @@ import {
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
+
+// ---------------------------------------------------------------------------
+// T6.4: Provider-to-Docker-image mapping (M2-P2 REQ-9.11)
+// ---------------------------------------------------------------------------
+
+/**
+ * Map agent provider strings to Docker image tags.
+ * Falls back to CONTAINER_IMAGE when no mapping is found.
+ */
+const PROVIDER_IMAGE_MAP: Record<string, string> = {
+  'anthropic-sonnet-4': 'travel-agent:sonnet-4',
+  'anthropic-opus-4': 'travel-agent:opus-4',
+  'anthropic-haiku-4': 'travel-agent:haiku-4',
+};
+
+/**
+ * Resolve a provider string (or explicit image) to a Docker image tag.
+ * Priority: explicit image arg > provider map > CONTAINER_IMAGE default.
+ */
+export function resolveContainerImage(imageOrProvider?: string): string {
+  if (!imageOrProvider) return CONTAINER_IMAGE;
+
+  // If it looks like a Docker image tag (contains ':' or '/'), use directly
+  if (imageOrProvider.includes(':') || imageOrProvider.includes('/')) {
+    return imageOrProvider;
+  }
+
+  // Look up provider mapping
+  const mapped = PROVIDER_IMAGE_MAP[imageOrProvider];
+  if (mapped) return mapped;
+
+  logger.warn(
+    { provider: imageOrProvider },
+    'No Docker image mapping for provider, falling back to default',
+  );
+  return CONTAINER_IMAGE;
+}
 import {
   CONTAINER_HOST_GATEWAY,
   CONTAINER_RUNTIME_BIN,
@@ -41,6 +78,8 @@ export interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   assistantName?: string;
+  /** Provider string or Docker image tag for agent-specific containers (T6.4) */
+  agentImage?: string;
 }
 
 export interface ContainerOutput {
@@ -217,6 +256,7 @@ function buildVolumeMounts(
 function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
+  image?: string,
 ): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
@@ -261,7 +301,7 @@ function buildContainerArgs(
     }
   }
 
-  args.push(CONTAINER_IMAGE);
+  args.push(resolveContainerImage(image));
 
   return args;
 }
@@ -280,7 +320,7 @@ export async function runContainerAgent(
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
-  const containerArgs = buildContainerArgs(mounts, containerName);
+  const containerArgs = buildContainerArgs(mounts, containerName, input.agentImage);
 
   logger.debug(
     {
